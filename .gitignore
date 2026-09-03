@@ -6,3 +6,4 @@ obj/
 .idea/
 umbraco/
 wwwroot/media/
+pipeline/
