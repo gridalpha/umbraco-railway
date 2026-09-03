@@ -64,19 +64,22 @@ fi
 [ -z "$MEM_MB" ] && MEM_MB=2048
 export MSSQL_MEMORY_LIMIT_MB="$MEM_MB"
 
-# mssql.conf is the only way to reach the coredump settings; write it fresh each boot.
-cat > "$DATA_ROOT/mssql.conf" <<CONF
-[coredump]
-captureminiandfull = false
-coredumptype = mini
+# mssql.conf is instance state written by SQL Server's own setup — never regenerate it.
+# The coredump and dump-location settings are reachable through mssql-conf instead, and both
+# are best-effort: a failure here must not stop the server from starting.
+if [ -f "$DATA_ROOT/mssql.conf" ]; then
+  /opt/mssql/bin/mssql-conf set coredump.coredumptype mini >/dev/null 2>&1 || true
+  /opt/mssql/bin/mssql-conf set coredump.captureminiandfull false >/dev/null 2>&1 || true
+fi
 
-[filelocation]
-defaultdumpdir = /var/opt/mssql-dumps
+# Print the tail of the previous boot's error log: SQL Server writes the real reason for a
+# fatal startup there, while stdout only carries the generic "fatal error" line.
+if [ -f "$DATA_ROOT/log/errorlog" ]; then
+  log "---- previous errorlog (last 40 lines) ----"
+  tail -n 40 "$DATA_ROOT/log/errorlog" | tr -d '\r' | sed 's/^/[errorlog] /' || true
+  log "---- end previous errorlog ----"
+fi
 
-[memory]
-memorylimitmb = $MEM_MB
-CONF
-chown "$MSSQL_UID:$MSSQL_GID" "$DATA_ROOT/mssql.conf"
 log "sizing: cpus=$CPUS memorylimitmb=$MEM_MB"
 
 # ---------------------------------------------------------------------------
