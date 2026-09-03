@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>Umbraco.Cms.Web.UI</RootNamespace>
+    <!-- Backoffice assets are pre-compressed by Umbraco; let the CDN/edge handle the rest. -->
+    <CompressionEnabled>false</CompressionEnabled>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Floating inside the Umbraco 17 LTS line: every rebuild picks up the newest 17.x, which is
+      supported (bug fixes + security) until 2027-11 and security-only until 2028-11. A major bump
+      is a deliberate repo change, because it needs a database migration and template review.
+    -->
+    <PackageReference Include="Umbraco.Cms" Version="17.*" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <!-- App-local ICU keeps globalization identical across build/runtime images. -->
+    <UmbracoAppLocalIcuVersion>72.1.0.3</UmbracoAppLocalIcuVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.ICU.ICU4C.Runtime" Version="$(UmbracoAppLocalIcuVersion)" />
+    <RuntimeHostConfigurationOption Include="System.Globalization.AppLocalIcu" Value="$(UmbracoAppLocalIcuVersion)" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <!-- Razor files are needed for the backoffice template editor to work correctly. -->
+    <CopyRazorGenerateFilesToPublishDirectory>true</CopyRazorGenerateFilesToPublishDirectory>
+  </PropertyGroup>
+</Project>
