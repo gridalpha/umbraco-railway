@@ -7,13 +7,21 @@ services built from this one repository.
 | Service | Dockerfile | Public | Volume |
 |---|---|---|---|
 | `umbraco` | `Dockerfile` | yes | `/data` |
-| `sqlserver` | `sqlserver/Dockerfile` (`RAILWAY_DOCKERFILE_PATH`) | no | `/var/opt/mssql` |
+
+`sqlserver/` holds a SQL Server Express service that is **not deployed on Railway** — see
+below — but is kept because it is a working image for platforms whose block storage SQL
+Server supports.
 
 ## Why this shape
 
-- **SQL Server, not SQLite.** Umbraco supports exactly two databases, and its own
-  documentation positions SQLite as a development database. SQL Server runs here in the
-  free **Express** edition (`MSSQL_PID=Express`), which is licensed for production use.
+- **SQLite on the volume, with SQL Server as an override.** Umbraco supports exactly two
+  databases: SQL Server and SQLite. SQL Server **cannot run on a Railway volume**: it starts,
+  opens `master`, logs `There have been 256 misaligned log IOs which required falling back to
+  synchronous IO` against `master.mdf`, and then dies with `This program has encountered a
+  fatal error and cannot continue running` — measured 2026-09-03 on `2022-latest`. So the
+  default database here is SQLite, kept on the volume. Point `ConnectionStrings__umbracoDbDSN`
+  (or the `DB_*` variables) at a managed SQL Server — Azure SQL, or a SQL Server you host
+  elsewhere — for a write-heavy or multi-editor site.
 - **Umbraco 17 LTS, floating.** `Umbraco.Cms` is referenced as `17.*`, so every rebuild
   picks up the newest patch on the long-term-support line (fixes to 2027-11, security to
   2028-11). Umbraco's own project template offers the same `17.*` choice for LTS.

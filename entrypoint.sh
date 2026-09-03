@@ -59,16 +59,22 @@ fi
 # defaults are deterministic and therefore safe on a first-ever (template) deploy.
 # ---------------------------------------------------------------------------
 if [ -z "${ConnectionStrings__umbracoDbDSN:-}" ]; then
-  : "${DB_HOST:=sqlserver.railway.internal}"
-  : "${DB_PORT:=1433}"
-  : "${DB_NAME:=umbraco}"
-  : "${DB_USER:=umbraco}"
-  if [ -z "${DB_PASSWORD:-}" ]; then
-    log "FATAL: set DB_PASSWORD, or supply ConnectionStrings__umbracoDbDSN yourself."
-    exit 1
+  if [ -n "${DB_PASSWORD:-}" ]; then
+    : "${DB_HOST:=sqlserver.railway.internal}"
+    : "${DB_PORT:=1433}"
+    : "${DB_NAME:=umbraco}"
+    : "${DB_USER:=umbraco}"
+    export ConnectionStrings__umbracoDbDSN="Server=${DB_HOST},${DB_PORT};Database=${DB_NAME};User Id=${DB_USER};Password=${DB_PASSWORD};Encrypt=true;TrustServerCertificate=true;Connect Timeout=15;"
+    export ConnectionStrings__umbracoDbDSN_ProviderName="Microsoft.Data.SqlClient"
+    log "database target ${DB_USER}@${DB_HOST},${DB_PORT}/${DB_NAME} (SQL Server)"
+  else
+    # SQLite lives in Umbraco's own data directory, which is on the volume. |DataDirectory|
+    # resolves to umbraco/Data. Set DB_PASSWORD (or the whole connection string) to point at
+    # an external SQL Server instead.
+    export ConnectionStrings__umbracoDbDSN="Data Source=|DataDirectory|/Umbraco.sqlite.db;Cache=Shared;Foreign Keys=True;Pooling=True"
+    export ConnectionStrings__umbracoDbDSN_ProviderName="Microsoft.Data.Sqlite"
+    log "database target SQLite at ${DATA_DIR}/umbraco-data/Umbraco.sqlite.db"
   fi
-  export ConnectionStrings__umbracoDbDSN="Server=${DB_HOST},${DB_PORT};Database=${DB_NAME};User Id=${DB_USER};Password=${DB_PASSWORD};Encrypt=true;TrustServerCertificate=true;Connect Timeout=15;"
-  log "database target ${DB_USER}@${DB_HOST},${DB_PORT}/${DB_NAME}"
 fi
 unset DB_PASSWORD
 
