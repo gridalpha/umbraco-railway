@@ -15,6 +15,7 @@ RUN apt-get update \
  && rm -rf /var/lib/apt/lists/* \
  && command -v setpriv >/dev/null \
  && command -v socat >/dev/null \
+ && command -v taskset >/dev/null \
  && test -x /opt/mssql-tools18/bin/sqlcmd
 
 COPY sqlserver/entrypoint.sh /usr/local/bin/entrypoint.sh

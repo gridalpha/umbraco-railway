@@ -32,6 +32,53 @@ if [ "$(stat -c '%u' "$DATA_ROOT")" != "$MSSQL_UID" ]; then
 fi
 chmod 0750 "$DATA_ROOT"
 
+# A crash dump is several GB and the default dump directory is on the volume, so one crash
+# fills a 5 GB Railway volume and every later boot then fails on ENOSPC. Clear any dump left
+# by a previous container and keep new ones off the volume entirely.
+rm -rf "$DATA_ROOT"/log/core.* "$DATA_ROOT"/log/*.mdmp "$DATA_ROOT"/log/*.dmp 2>/dev/null || true
+mkdir -p /var/opt/mssql-dumps
+chown "$MSSQL_UID:$MSSQL_GID" /var/opt/mssql-dumps
+export MSSQL_DUMP_DIR=/var/opt/mssql-dumps
+log "volume free: $(df -Pk "$DATA_ROOT" | awk 'NR==2 {printf "%d MiB of %d MiB", $4/1024, $2/1024}')"
+
+# ---------------------------------------------------------------------------
+# Sizing. SQL Server reads the host's CPU count and memory, not the container's cgroup, so
+# on Railway's 48-core hosts it sizes its thread pools and memory target for a machine it
+# does not have. Narrow the affinity mask ourselves and give it an explicit memory ceiling.
+# ---------------------------------------------------------------------------
+CPUS=8
+if [ -r /sys/fs/cgroup/cpu.max ]; then
+  read -r quota period < /sys/fs/cgroup/cpu.max || true
+  if [ "${quota:-max}" != "max" ] && [ -n "${period:-}" ] && [ "$period" -gt 0 ]; then
+    CPUS=$(( quota / period ))
+    [ "$CPUS" -lt 1 ] && CPUS=1
+  fi
+fi
+MEM_MB="${MSSQL_MEMORY_LIMIT_MB:-}"
+if [ -z "$MEM_MB" ] && [ -r /sys/fs/cgroup/memory.max ]; then
+  MAXMEM="$(cat /sys/fs/cgroup/memory.max)"
+  if [ "$MAXMEM" != "max" ]; then
+    MEM_MB=$(( MAXMEM / 1048576 * 40 / 100 ))
+  fi
+fi
+[ -z "$MEM_MB" ] && MEM_MB=2048
+export MSSQL_MEMORY_LIMIT_MB="$MEM_MB"
+
+# mssql.conf is the only way to reach the coredump settings; write it fresh each boot.
+cat > "$DATA_ROOT/mssql.conf" <<CONF
+[coredump]
+captureminiandfull = false
+coredumptype = mini
+
+[filelocation]
+defaultdumpdir = /var/opt/mssql-dumps
+
+[memory]
+memorylimitmb = $MEM_MB
+CONF
+chown "$MSSQL_UID:$MSSQL_GID" "$DATA_ROOT/mssql.conf"
+log "sizing: cpus=$CPUS memorylimitmb=$MEM_MB"
+
 # ---------------------------------------------------------------------------
 # Bootstrap Umbraco's database in the background so SQL Server stays the container's main
 # process. Idempotent, and bounded so a genuine failure still surfaces in the log.
@@ -99,5 +146,5 @@ bootstrap &
   fi
 ) &
 
-log "starting SQL Server (edition ${MSSQL_PID:-developer}) as uid $MSSQL_UID"
-exec setpriv --reuid="$MSSQL_UID" --regid="$MSSQL_GID" --init-groups "$@"
+log "starting SQL Server (edition ${MSSQL_PID:-developer}) as uid $MSSQL_UID on cpus 0-$((CPUS - 1))"
+exec setpriv --reuid="$MSSQL_UID" --regid="$MSSQL_GID" --init-groups taskset -c "0-$((CPUS - 1))" "$@"
